@@ -1,0 +1,20 @@
+{
+  "target": "http://localhost:8080/products",
+  "method": "GET",
+  "requests": 100,
+  "concurrency": 10,
+  "success": 100,
+  "errors": 0,
+  "duration_ms": 44,
+  "rps": 2249.550106850256,
+  "latency": {
+    "p50_ms": 2.427708,
+    "p95_ms": 17.223917,
+    "p99_ms": 18.396333,
+    "max_ms": 18.49175
+  },
+  "status_codes": {
+    "200": 100
+  },
+  "timestamp": "2026-06-17T21:46:23Z"
+}

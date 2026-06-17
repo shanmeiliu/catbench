@@ -25,6 +25,7 @@ type Config struct {
 type Result struct {
 	URL          string
 	Method       string
+	Timestamp    time.Time
 	Requests     int
 	Concurrency  int
 	Success      int
@@ -72,6 +73,7 @@ func Run(cfg Config) (Result, error) {
 		}()
 	}
 
+	startTime := time.Now().UTC()
 	start := time.Now()
 	for i := 0; i < cfg.Requests; i++ {
 		jobs <- struct{}{}
@@ -82,7 +84,7 @@ func Run(cfg Config) (Result, error) {
 	duration := time.Since(start)
 	close(results)
 
-	return summarize(cfg, results, duration), nil
+	return summarize(cfg, results, duration, startTime), nil
 }
 
 func validateConfig(cfg *Config) error {
@@ -145,7 +147,7 @@ func executeRequest(client *http.Client, cfg Config) requestResult {
 	}
 }
 
-func summarize(cfg Config, results <-chan requestResult, duration time.Duration) Result {
+func summarize(cfg Config, results <-chan requestResult, duration time.Duration, timestamp time.Time) Result {
 	statusCounts := make(map[int]int)
 	latencies := make([]time.Duration, 0, cfg.Requests)
 	success := 0
@@ -175,6 +177,7 @@ func summarize(cfg Config, results <-chan requestResult, duration time.Duration)
 	return Result{
 		URL:          cfg.URL,
 		Method:       cfg.Method,
+		Timestamp:    timestamp,
 		Requests:     cfg.Requests,
 		Concurrency:  cfg.Concurrency,
 		Success:      success,

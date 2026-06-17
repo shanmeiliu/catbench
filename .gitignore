@@ -1,4 +1,4 @@
-catbench
+/catbench
 
 # Go test/build artifacts
 *.test
