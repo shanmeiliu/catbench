@@ -1,0 +1,5 @@
+catbench
+
+# Go test/build artifacts
+*.test
+coverage.out
