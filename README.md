@@ -2,7 +2,7 @@
 
 Catbench is a lightweight HTTP load testing CLI for benchmarking one HTTP endpoint.
 
-Version 0.2 focuses on a single endpoint with a fixed number of requests, configurable concurrency, machine-readable JSON output, and saved benchmark result files. It uses Go's standard library HTTP client and does not require external dependencies.
+Version 0.4 focuses on a single endpoint with either a fixed number of requests or a fixed benchmark duration, configurable concurrency, machine-readable JSON output, saved benchmark result files, and saved result comparison. It uses Go's standard library HTTP client and does not require external dependencies.
 
 ## Build
 
@@ -19,12 +19,32 @@ go build -o catbench ./cmd/catbench
   --concurrency 100
 ```
 
+Run for a fixed duration:
+
+```bash
+./catbench run \
+  --url http://localhost:8080/products \
+  --duration 30s \
+  --concurrency 100
+```
+
+Save a longer sustained-load benchmark:
+
+```bash
+./catbench run \
+  --url http://localhost:8080/products \
+  --duration 5m \
+  --concurrency 500 \
+  --save results/products-5m.json
+```
+
 POST requests can include a raw JSON body and repeated headers:
 
 ```bash
 ./catbench run \
   --url http://localhost:8080/products \
   --method POST \
+  --requests 1000 \
   --body '{"name":"Notebook"}' \
   --header "Content-Type: application/json" \
   --header "Authorization: Bearer token"
@@ -35,6 +55,7 @@ Print JSON instead of the text report:
 ```bash
 ./catbench run \
   --url http://localhost:8080/products \
+  --requests 1000 \
   --output json
 ```
 
@@ -70,7 +91,8 @@ Print comparison output as JSON:
 ```text
 --url string          required target URL
 --method string       HTTP method, GET or POST (default GET)
---requests int        total requests to send (default 1000)
+--requests int        total requests to send
+--duration duration   benchmark duration, such as 30s, 2m, or 5m
 --concurrency int     number of concurrent workers (default 50)
 --timeout duration    request timeout (default 10s)
 --body string         optional raw JSON body for POST
@@ -84,6 +106,28 @@ Compare command:
 ```text
 catbench compare <baseline.json> <candidate.json> [--output text|json]
 ```
+
+## Benchmark Modes
+
+Choose exactly one benchmark mode for `catbench run`.
+
+Requests mode sends a fixed amount of work:
+
+```bash
+./catbench run \
+  --url http://localhost:8080/products \
+  --requests 10000
+```
+
+Duration mode applies sustained load until the time expires:
+
+```bash
+./catbench run \
+  --url http://localhost:8080/products \
+  --duration 30s
+```
+
+Duration mode is useful for cache testing, connection pool testing, memory leak detection, and long-running benchmarks. The reported `Requests` value is the actual number of completed requests.
 
 ## Example Output
 
@@ -211,4 +255,4 @@ JSON compare output includes RPS change, latency change percentages, and error c
 
 ## Status
 
-Catbench v0.2 supports load testing one endpoint at a time, saving benchmark results as JSON, and comparing saved benchmark results. Distributed workers, HTML reports, CSV reports, charts, and spike/ramp/soak modes are intentionally out of scope for this release.
+Catbench v0.4 supports load testing one endpoint at a time by request count or duration, saving benchmark results as JSON, and comparing saved benchmark results. Distributed workers, HTML reports, CSV reports, charts, and spike/ramp/soak modes are intentionally out of scope for this release.

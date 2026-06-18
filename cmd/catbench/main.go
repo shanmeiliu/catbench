@@ -48,7 +48,8 @@ func run(args []string) {
 
 	runFlags.StringVar(&cfg.URL, "url", "", "target URL")
 	runFlags.StringVar(&cfg.Method, "method", "GET", "HTTP method: GET or POST")
-	runFlags.IntVar(&cfg.Requests, "requests", 1000, "total requests to send")
+	runFlags.IntVar(&cfg.Requests, "requests", 0, "total requests to send")
+	runFlags.DurationVar(&cfg.DurationLimit, "duration", 0, "benchmark duration")
 	runFlags.IntVar(&cfg.Concurrency, "concurrency", 50, "number of concurrent workers")
 	runFlags.DurationVar(&cfg.Timeout, "timeout", 10*time.Second, "request timeout")
 	runFlags.StringVar(&cfg.Body, "body", "", "raw request body")
@@ -143,7 +144,7 @@ func compare(args []string) {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  catbench run --url URL [--method GET|POST] [--requests N] [--concurrency N] [--timeout 10s] [--body JSON] [--header 'Name: Value'] [--output text|json] [--save path]")
+	fmt.Fprintln(os.Stderr, "  catbench run --url URL (--requests N | --duration 30s) [--method GET|POST] [--concurrency N] [--timeout 10s] [--body JSON] [--header 'Name: Value'] [--output text|json] [--save path]")
 	fmt.Fprintln(os.Stderr, "  catbench compare <baseline.json> <candidate.json> [--output text|json]")
 }
 

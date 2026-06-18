@@ -13,13 +13,15 @@ import (
 )
 
 type Config struct {
-	URL         string
-	Method      string
-	Requests    int
-	Concurrency int
-	Timeout     time.Duration
-	Body        string
-	Headers     map[string]string
+	URL           string
+	Method        string
+	Requests      int
+	DurationLimit time.Duration
+	Concurrency   int
+	Timeout       time.Duration
+	Body          string
+	Headers       map[string]string
+	Client        *http.Client
 }
 
 type Result struct {
@@ -50,17 +52,36 @@ func Run(cfg Config) (Result, error) {
 		return Result{}, err
 	}
 
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConns = cfg.Concurrency
-	transport.MaxIdleConnsPerHost = cfg.Concurrency
+	client := cfg.Client
+	if client == nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.MaxIdleConns = cfg.Concurrency
+		transport.MaxIdleConnsPerHost = cfg.Concurrency
 
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   cfg.Timeout,
+		client = &http.Client{
+			Transport: transport,
+			Timeout:   cfg.Timeout,
+		}
 	}
 
+	startTime := time.Now().UTC()
+	start := time.Now()
+	results := runWork(client, cfg)
+	duration := time.Since(start)
+
+	return summarize(cfg, results, duration, startTime), nil
+}
+
+func runWork(client *http.Client, cfg Config) []requestResult {
+	if cfg.DurationLimit > 0 {
+		return runDuration(client, cfg)
+	}
+	return runRequests(client, cfg)
+}
+
+func runRequests(client *http.Client, cfg Config) []requestResult {
 	jobs := make(chan struct{})
-	results := make(chan requestResult, cfg.Requests)
+	resultCh := make(chan requestResult, cfg.Concurrency)
 
 	var wg sync.WaitGroup
 	wg.Add(cfg.Concurrency)
@@ -68,23 +89,70 @@ func Run(cfg Config) (Result, error) {
 		go func() {
 			defer wg.Done()
 			for range jobs {
-				results <- executeRequest(client, cfg)
+				resultCh <- executeRequest(client, cfg)
 			}
 		}()
 	}
 
-	startTime := time.Now().UTC()
-	start := time.Now()
+	var collectWG sync.WaitGroup
+	results := make([]requestResult, 0, cfg.Requests)
+	collectWG.Add(1)
+	go func() {
+		defer collectWG.Done()
+		for result := range resultCh {
+			results = append(results, result)
+		}
+	}()
+
 	for i := 0; i < cfg.Requests; i++ {
 		jobs <- struct{}{}
 	}
 	close(jobs)
 
 	wg.Wait()
-	duration := time.Since(start)
-	close(results)
+	close(resultCh)
+	collectWG.Wait()
 
-	return summarize(cfg, results, duration, startTime), nil
+	return results
+}
+
+func runDuration(client *http.Client, cfg Config) []requestResult {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DurationLimit)
+	defer cancel()
+
+	resultCh := make(chan requestResult, cfg.Concurrency)
+
+	var wg sync.WaitGroup
+	wg.Add(cfg.Concurrency)
+	for i := 0; i < cfg.Concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					resultCh <- executeRequest(client, cfg)
+				}
+			}
+		}()
+	}
+
+	var collectWG sync.WaitGroup
+	results := make([]requestResult, 0)
+	collectWG.Add(1)
+	go func() {
+		defer collectWG.Done()
+		for result := range resultCh {
+			results = append(results, result)
+		}
+	}()
+
+	wg.Wait()
+	close(resultCh)
+	collectWG.Wait()
+
+	return results
 }
 
 func validateConfig(cfg *Config) error {
@@ -96,8 +164,17 @@ func validateConfig(cfg *Config) error {
 	if cfg.Method != http.MethodGet && cfg.Method != http.MethodPost {
 		return fmt.Errorf("unsupported --method %q: only GET and POST are supported", cfg.Method)
 	}
-	if cfg.Requests <= 0 {
+	if cfg.Requests < 0 {
 		return fmt.Errorf("--requests must be greater than 0")
+	}
+	if cfg.DurationLimit < 0 {
+		return fmt.Errorf("--duration must be greater than 0")
+	}
+	if cfg.Requests > 0 && cfg.DurationLimit > 0 {
+		return fmt.Errorf("choose either --requests or --duration, not both")
+	}
+	if cfg.Requests == 0 && cfg.DurationLimit == 0 {
+		return fmt.Errorf("choose exactly one of --requests or --duration")
 	}
 	if cfg.Concurrency <= 0 {
 		return fmt.Errorf("--concurrency must be greater than 0")
@@ -105,7 +182,7 @@ func validateConfig(cfg *Config) error {
 	if cfg.Timeout <= 0 {
 		return fmt.Errorf("--timeout must be greater than 0")
 	}
-	if cfg.Concurrency > cfg.Requests {
+	if cfg.Requests > 0 && cfg.Concurrency > cfg.Requests {
 		cfg.Concurrency = cfg.Requests
 	}
 
@@ -147,13 +224,13 @@ func executeRequest(client *http.Client, cfg Config) requestResult {
 	}
 }
 
-func summarize(cfg Config, results <-chan requestResult, duration time.Duration, timestamp time.Time) Result {
+func summarize(cfg Config, results []requestResult, duration time.Duration, timestamp time.Time) Result {
 	statusCounts := make(map[int]int)
-	latencies := make([]time.Duration, 0, cfg.Requests)
+	latencies := make([]time.Duration, 0, len(results))
 	success := 0
 	errors := 0
 
-	for result := range results {
+	for _, result := range results {
 		latencies = append(latencies, result.latency)
 		if result.status != 0 {
 			statusCounts[result.status]++
@@ -171,14 +248,14 @@ func summarize(cfg Config, results <-chan requestResult, duration time.Duration,
 
 	rps := 0.0
 	if duration > 0 {
-		rps = float64(cfg.Requests) / duration.Seconds()
+		rps = float64(len(results)) / duration.Seconds()
 	}
 
 	return Result{
 		URL:          cfg.URL,
 		Method:       cfg.Method,
 		Timestamp:    timestamp,
-		Requests:     cfg.Requests,
+		Requests:     len(results),
 		Concurrency:  cfg.Concurrency,
 		Success:      success,
 		Errors:       errors,
