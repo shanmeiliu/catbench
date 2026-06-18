@@ -48,6 +48,23 @@ Save a benchmark result as a baseline file:
   --save results/products-baseline.json
 ```
 
+Compare a baseline against a candidate result:
+
+```bash
+./catbench compare \
+  results/products-baseline.json \
+  results/products-cache.json
+```
+
+Print comparison output as JSON:
+
+```bash
+./catbench compare \
+  results/products-baseline.json \
+  results/products-cache.json \
+  --output json
+```
+
 ## Flags
 
 ```text
@@ -60,6 +77,12 @@ Save a benchmark result as a baseline file:
 --header string       request header in "Name: Value" format; can be repeated
 --output string       output format, text or json (default text)
 --save string         save benchmark result JSON to this path
+```
+
+Compare command:
+
+```text
+catbench compare <baseline.json> <candidate.json> [--output text|json]
 ```
 
 ## Example Output
@@ -135,16 +158,57 @@ Run the same benchmark after an optimization, such as adding a cache:
 
 Compare:
 
-```text
-Baseline:   results/products-baseline.json
-After cache: results/products-cache.json
-
-Metrics:
-p95 latency
-p99 latency
-RPS
+```bash
+./catbench compare \
+  results/products-baseline.json \
+  results/products-cache.json
 ```
+
+Use the comparison report to check:
+
+```text
+RPS change
+p50 latency change
+p95 latency change
+p99 latency change
+max latency change
+success count
+error count
+error rate difference
+```
+
+## Compare Output
+
+```text
+Catbench Compare
+
+Target:
+baseline:  http://localhost:8080/products
+candidate: http://localhost:8080/products
+
+RPS:
+baseline:  2109.86
+candidate: 8240.12
+change:    +290.55%
+
+Latency:
+p50: baseline 2.42ms -> candidate 0.80ms (-66.94%)
+p95: baseline 22.49ms -> candidate 4.10ms (-81.77%)
+p99: baseline 23.77ms -> candidate 8.50ms (-64.24%)
+max: baseline 23.83ms -> candidate 18.00ms (-24.46%)
+
+Success:
+baseline:  5000
+candidate: 5000
+
+Errors:
+baseline:  0
+candidate: 0
+rate diff: +0.00 percentage points
+```
+
+JSON compare output includes RPS change, latency change percentages, and error counts.
 
 ## Status
 
-Catbench v0.2 supports load testing one endpoint at a time and saving benchmark results as JSON. Distributed workers, HTML reports, CSV reports, and spike/ramp/soak modes are intentionally out of scope for this release.
+Catbench v0.2 supports load testing one endpoint at a time, saving benchmark results as JSON, and comparing saved benchmark results. Distributed workers, HTML reports, CSV reports, charts, and spike/ramp/soak modes are intentionally out of scope for this release.

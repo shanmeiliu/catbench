@@ -3,3 +3,6 @@
 # Go test/build artifacts
 *.test
 coverage.out
+
+# Saved local benchmark outputs
+results/

@@ -12,6 +12,20 @@ import (
 	"github.com/shanmeiliu/catbench/internal/runner"
 )
 
+type CatbenchResult struct {
+	Target      string         `json:"target"`
+	Method      string         `json:"method"`
+	Requests    int            `json:"requests"`
+	Concurrency int            `json:"concurrency"`
+	Success     int            `json:"success"`
+	Errors      int            `json:"errors"`
+	DurationMS  int64          `json:"duration_ms"`
+	RPS         float64        `json:"rps"`
+	Latency     JSONLatency    `json:"latency"`
+	StatusCodes map[string]int `json:"status_codes"`
+	Timestamp   string         `json:"timestamp"`
+}
+
 type JSONResult struct {
 	Target      string         `json:"target"`
 	Method      string         `json:"method"`
@@ -55,6 +69,65 @@ func SaveJSON(path string, result runner.Result) error {
 
 	if err := WriteJSON(file, result); err != nil {
 		return fmt.Errorf("write result file: %w", err)
+	}
+
+	return nil
+}
+
+func LoadResultFile(path string) (CatbenchResult, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return CatbenchResult{}, err
+	}
+	defer file.Close()
+
+	var result CatbenchResult
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return CatbenchResult{}, fmt.Errorf("invalid catbench JSON result: %w", err)
+	}
+
+	if err := validateCatbenchResult(result); err != nil {
+		return CatbenchResult{}, err
+	}
+
+	return result, nil
+}
+
+func validateCatbenchResult(result CatbenchResult) error {
+	if result.Target == "" {
+		return fmt.Errorf("invalid catbench JSON result: missing target")
+	}
+	if result.Method == "" {
+		return fmt.Errorf("invalid catbench JSON result: missing method")
+	}
+	if result.Requests <= 0 {
+		return fmt.Errorf("invalid catbench JSON result: requests must be greater than 0")
+	}
+	if result.Concurrency <= 0 {
+		return fmt.Errorf("invalid catbench JSON result: concurrency must be greater than 0")
+	}
+	if result.Success < 0 || result.Errors < 0 {
+		return fmt.Errorf("invalid catbench JSON result: success and errors must be non-negative")
+	}
+	if result.Success+result.Errors != result.Requests {
+		return fmt.Errorf("invalid catbench JSON result: success plus errors must equal requests")
+	}
+	if result.DurationMS < 0 {
+		return fmt.Errorf("invalid catbench JSON result: duration_ms must be non-negative")
+	}
+	if result.RPS < 0 {
+		return fmt.Errorf("invalid catbench JSON result: rps must be non-negative")
+	}
+	if result.Latency.P50MS < 0 || result.Latency.P95MS < 0 || result.Latency.P99MS < 0 || result.Latency.MaxMS < 0 {
+		return fmt.Errorf("invalid catbench JSON result: latency values must be non-negative")
+	}
+	if result.StatusCodes == nil {
+		return fmt.Errorf("invalid catbench JSON result: missing status_codes")
+	}
+	if result.Timestamp == "" {
+		return fmt.Errorf("invalid catbench JSON result: missing timestamp")
 	}
 
 	return nil

@@ -23,11 +23,23 @@ func (h *headerFlags) Set(value string) error {
 }
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "Usage: catbench run --url URL [--method GET|POST] [--requests N] [--concurrency N] [--timeout 10s] [--body JSON] [--header 'Name: Value'] [--output text|json] [--save path]")
+	if len(os.Args) < 2 {
+		printUsage()
 		os.Exit(2)
 	}
 
+	switch os.Args[1] {
+	case "run":
+		run(os.Args[2:])
+	case "compare":
+		compare(os.Args[2:])
+	default:
+		printUsage()
+		os.Exit(2)
+	}
+}
+
+func run(args []string) {
 	runFlags := flag.NewFlagSet("run", flag.ExitOnError)
 	var headers headerFlags
 	var output string
@@ -44,7 +56,7 @@ func main() {
 	runFlags.StringVar(&output, "output", "text", "output format: text or json")
 	runFlags.StringVar(&savePath, "save", "", "save benchmark result JSON to this path")
 
-	if err := runFlags.Parse(os.Args[2:]); err != nil {
+	if err := runFlags.Parse(args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
@@ -84,6 +96,55 @@ func main() {
 	}
 
 	report.Print(os.Stdout, result)
+}
+
+func compare(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: catbench compare <baseline.json> <candidate.json> [--output text|json]")
+		os.Exit(2)
+	}
+
+	baselinePath := args[0]
+	candidatePath := args[1]
+	compareFlags := flag.NewFlagSet("compare", flag.ExitOnError)
+	var output string
+	compareFlags.StringVar(&output, "output", "text", "output format: text or json")
+	if err := compareFlags.Parse(args[2:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if compareFlags.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "Usage: catbench compare <baseline.json> <candidate.json> [--output text|json]")
+		os.Exit(2)
+	}
+
+	output = strings.ToLower(strings.TrimSpace(output))
+	if output != "text" && output != "json" {
+		fmt.Fprintf(os.Stderr, "unsupported --output %q: expected text or json\n", output)
+		os.Exit(2)
+	}
+
+	comparison, err := report.CompareFiles(baselinePath, candidatePath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if output == "json" {
+		if err := report.WriteCompareJSON(os.Stdout, comparison); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	report.PrintCompare(os.Stdout, comparison)
+}
+
+func printUsage() {
+	fmt.Fprintln(os.Stderr, "Usage:")
+	fmt.Fprintln(os.Stderr, "  catbench run --url URL [--method GET|POST] [--requests N] [--concurrency N] [--timeout 10s] [--body JSON] [--header 'Name: Value'] [--output text|json] [--save path]")
+	fmt.Fprintln(os.Stderr, "  catbench compare <baseline.json> <candidate.json> [--output text|json]")
 }
 
 func parseHeaders(values []string) (map[string]string, error) {
